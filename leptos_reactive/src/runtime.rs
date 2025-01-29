@@ -1,13 +1,9 @@
 #[cfg(debug_assertions)]
 use crate::SpecialNonReactiveZone;
 use crate::{
-    hydration::SharedContext,
-    node::{
+    hydration::SharedContext, macros::debug_warn, node::{
         Disposer, NodeId, ReactiveNode, ReactiveNodeState, ReactiveNodeType,
-    },
-    AnyComputation, AnyResource, EffectState, Memo, MemoState, ReadSignal,
-    ResourceId, ResourceState, RwSignal, SerializableResource, StoredValueId,
-    Trigger, UnserializableResource, WriteSignal,
+    }, AnyComputation, AnyResource, EffectState, Memo, MemoState, ReadSignal, ResourceId, ResourceState, RwSignal, SerializableResource, StoredValueId, Trigger, UnserializableResource, WriteSignal
 };
 use cfg_if::cfg_if;
 use core::hash::BuildHasherDefault;
@@ -253,6 +249,7 @@ impl Runtime {
         drop(node);
     }
     fn cleanup_node(&self, node_id: NodeId) {
+        self.contexts.borrow_mut().remove(node_id);
         self.run_on_cleanups(node_id);
         self.dispose_children(node_id);
     }
@@ -768,6 +765,7 @@ where
                 state: ReactiveNodeState::Clean,
                 node_type: ReactiveNodeType::Trigger,
             });
+            // crate::macros::debug_warn!("id: {:?}, caller: {:?}", id, std::panic::Location::caller());
             runtime.push_scope_property(ScopeProperty::Trigger(id));
             let disposer = Disposer(id);
 
@@ -882,6 +880,7 @@ pub fn run_as_child<T>(f: impl FnOnce() -> T + 'static) -> T {
             state: ReactiveNodeState::Clean,
             node_type: ReactiveNodeType::Trigger,
         });
+        // crate::macros::debug_warn!("id: {:?}, caller: {:?}", id, std::panic::Location::caller());
         runtime.push_scope_property(ScopeProperty::Trigger(id));
         let disposer = Disposer(id);
 
@@ -1045,6 +1044,7 @@ impl RuntimeId {
         let id = self.create_concrete_signal(
             Rc::new(RefCell::new(value)) as Rc<RefCell<dyn Any>>
         );
+        // debug_warn!("id: {:?}, caller: {:?}", id, std::panic::Location::caller());
         RwSignal {
             id,
             ty: PhantomData,
@@ -1066,6 +1066,7 @@ impl RuntimeId {
                     f: Rc::clone(&effect),
                 },
             });
+            // crate::macros::debug_warn!("id: {:?}, caller: {:?}", id, std::panic::Location::caller());
             runtime.push_scope_property(ScopeProperty::Effect(id));
             id
         })
@@ -1085,6 +1086,7 @@ impl RuntimeId {
                 state: ReactiveNodeState::Dirty,
                 node_type: ReactiveNodeType::Memo { f: computation },
             });
+            // crate::macros::debug_warn!("id: {:?}, caller: {:?}", id, std::panic::Location::caller());
             runtime.push_scope_property(ScopeProperty::Effect(id));
             id
         })

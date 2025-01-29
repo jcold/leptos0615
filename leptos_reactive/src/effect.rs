@@ -76,6 +76,10 @@ where
             let owner = Owner::current();
             let id = runtime.create_effect(f);
 
+            // if owner.is_none(){
+            //     crate::macros::debug_warn!("id: {:?}, caller: {:?}", id, std::panic::Location::caller());
+            // }
+
             queue_microtask(move || {
                 with_owner(owner.unwrap(), move || {
                     _ = with_runtime( |runtime| {
