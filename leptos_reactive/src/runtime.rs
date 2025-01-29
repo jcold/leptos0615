@@ -1,9 +1,14 @@
 #[cfg(debug_assertions)]
 use crate::SpecialNonReactiveZone;
 use crate::{
-    hydration::SharedContext, macros::debug_warn, node::{
+    hydration::SharedContext,
+    macros::debug_warn,
+    node::{
         Disposer, NodeId, ReactiveNode, ReactiveNodeState, ReactiveNodeType,
-    }, AnyComputation, AnyResource, EffectState, Memo, MemoState, ReadSignal, ResourceId, ResourceState, RwSignal, SerializableResource, StoredValueId, Trigger, UnserializableResource, WriteSignal
+    },
+    AnyComputation, AnyResource, EffectState, Memo, MemoState, ReadSignal,
+    ResourceId, ResourceState, RwSignal, SerializableResource, StoredValueId,
+    Trigger, UnserializableResource, WriteSignal,
 };
 use cfg_if::cfg_if;
 use core::hash::BuildHasherDefault;
@@ -73,11 +78,33 @@ pub(crate) struct Runtime {
     pub pending_effects: RefCell<Vec<NodeId>>,
     pub resources: RefCell<SlotMap<ResourceId, AnyResource>>,
     pub batching: Cell<bool>,
+
+    /// The owner of the root node.
+    root_owner: Cell<Option<NodeId>>,
+    /// Whether the root owner is active.
+    is_root_owner_active: Cell<bool>,
 }
 
 /// The current reactive runtime.
 pub fn current_runtime() -> RuntimeId {
     Runtime::current()
+}
+
+/// Runs the given function with the root owner active.
+pub fn with_root_owner<T>(f: impl FnOnce() -> T) -> T {
+    with_runtime(|runtime| {
+        runtime.is_root_owner_active.set(true);
+    })
+    .expect("Runtime not found");
+
+    let result = f();
+
+    with_runtime(|runtime| {
+        runtime.is_root_owner_active.set(false);
+    })
+    .expect("Runtime not found");
+
+    result
 }
 
 /// Sets the current reactive runtime.
@@ -498,7 +525,15 @@ impl Runtime {
         >,
     ) {
         let mut properties = self.node_properties.borrow_mut();
-        if let Some(owner) = self.owner.get() {
+
+        // If the root owner is active, use it instead of the current owner.
+        let owner = if self.is_root_owner_active.get() {
+            self.root_owner.get()
+        } else {
+            self.owner.get()
+        };
+
+        if let Some(owner) = owner {
             if let Some(entry) = properties.entry(owner) {
                 let entry = entry.or_default();
                 entry.push(property);
@@ -507,6 +542,11 @@ impl Runtime {
             if let Some(node) = property.to_node_id() {
                 let mut owners = self.node_owners.borrow_mut();
                 owners.insert(node, owner);
+
+                // If the root owner is not set, set it to the owner of the property.
+                if self.root_owner.get().is_none() {
+                    self.root_owner.set(Some(owner));
+                }
             }
         } else {
             crate::macros::debug_warn!(

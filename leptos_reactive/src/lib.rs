@@ -95,6 +95,7 @@ mod hydration;
 pub mod macros;
 mod memo;
 mod node;
+mod rc_reactive;
 mod resource;
 mod runtime;
 mod selector;
@@ -120,6 +121,7 @@ pub use memo::*;
 pub use node::Disposer;
 pub use oco::*;
 pub use oco_ref as oco;
+pub use rc_reactive::*;
 pub use resource::*;
 use runtime::*;
 pub use runtime::{
