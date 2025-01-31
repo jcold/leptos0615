@@ -1,4 +1,4 @@
-use crate::{with_runtime, Runtime, ScopeProperty};
+use crate::{with_runtime, Runtime, ScopeProperty, SignalDispose};
 use std::{
     cell::RefCell,
     fmt,
@@ -210,7 +210,7 @@ impl<T> StoredValue<T> {
     }
 
     /// Disposes of the stored value
-    pub fn dispose(self) {
+    fn dispose_inner(self) {
         _ = with_runtime(|runtime| {
             runtime.stored_values.borrow_mut().remove(self.id);
         });
@@ -260,6 +260,12 @@ impl<T> StoredValue<T> {
         })
         .ok()
         .flatten()
+    }
+}
+
+impl<T> SignalDispose for StoredValue<T> {
+    fn dispose(self) {
+        self.dispose_inner();
     }
 }
 

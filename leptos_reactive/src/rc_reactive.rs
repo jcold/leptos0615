@@ -1,52 +1,84 @@
 use std::{ops::Deref, rc::Rc};
 
-use crate::{runtime::with_root_owner, RwSignal, SignalDispose};
+use crate::{
+    runtime::with_root_owner, Memo, RwSignal, Signal, SignalDispose,
+    StoredValue,
+};
 
-/// A `RwSignal` that is owned by an `Rc`.
-#[derive(Debug, Clone)]
-pub struct RcRwSignal<T: 'static> {
-    inner: RwSignal<T>,
-    #[allow(unused)]
-    rc: Rc<AutoDispose>,
+/// 生成 Rc 包装的信号类型
+macro_rules! rc_wrapper {
+    ($name:ident, $inner_type:ident) => {
+        /// A `$inner_type` that is owned by an `Rc`.
+        #[derive(Debug, Clone)]
+        pub struct $name<T: 'static> {
+            inner: $inner_type<T>,
+            #[allow(unused)]
+            rc: Rc<AutoDispose>,
+        }
+
+        impl<T> $name<T> {
+            /// Get the number of strong references.
+            pub fn strong_count(&self) -> usize {
+                Rc::strong_count(&self.rc)
+            }
+        }
+
+        impl<T> Deref for $name<T> {
+            type Target = $inner_type<T>;
+
+            fn deref(&self) -> &Self::Target {
+                &self.inner
+            }
+        }
+    };
 }
 
-// impl<T: 'static> RcRwSignal<T> {
-//     pub(crate) fn try_dispose(&self) -> bool {
-//         if Rc::strong_count(&self.rc) == 1 {
-//             self.inner.dispose();
-//             true
-//         } else {
-//             false
-//         }
-//     }
-// }
-
-impl<T> RcRwSignal<T> {
-    /// Create a new `RcRwSignal` that is owned by an `Rc`.
+// 使用宏生成各种 Rc 包装类型
+rc_wrapper!(RcRwSignal, RwSignal);
+impl<T: 'static> RcRwSignal<T> {
+    /// 创建一个 Rc 包装的 RwSignal
     pub fn new(value: T) -> Self {
         let val = with_root_owner(|| RwSignal::new(value));
-        tracing::debug!("Creating RcRwSignal: {:?}", val);
-        let auto_dispose = AutoDispose::new(Box::new(move || {
-            tracing::debug!("Disposing of RcRwSignal: {:?}", val);
-            val.dispose()
-        }));
         Self {
             inner: val,
-            rc: Rc::new(auto_dispose),
+            rc: Rc::new(AutoDispose::new(val)),
         }
-    }
-
-    /// Get the number of strong references to the `RcRwSignal`.
-    pub fn strong_count(&self) -> usize {
-        Rc::strong_count(&self.rc)
     }
 }
 
-impl<T> Deref for RcRwSignal<T> {
-    type Target = RwSignal<T>;
+rc_wrapper!(RcStoredValue, StoredValue);
+impl<T: 'static> RcStoredValue<T> {
+    /// 创建一个 Rc 包装的 StoredValue
+    pub fn new(value: T) -> Self {
+        let val = with_root_owner(|| StoredValue::new(value));
+        Self {
+            inner: val,
+            rc: Rc::new(AutoDispose::new(val)),
+        }
+    }
+}
 
-    fn deref(&self) -> &Self::Target {
-        &self.inner
+rc_wrapper!(RcMemo, Memo);
+impl<T: PartialEq + 'static> RcMemo<T> {
+    /// 创建一个 Rc 包装的 Memo
+    pub fn new(value: impl Fn(Option<&T>) -> T + 'static) -> Self {
+        let val = with_root_owner(|| Memo::new(value));
+        Self {
+            inner: val,
+            rc: Rc::new(AutoDispose::new(val)),
+        }
+    }
+}
+
+rc_wrapper!(RcSignal, Signal);
+impl<T: PartialEq + 'static> RcSignal<T> {
+    /// 创建一个 Rc 包装的 Signal
+    pub fn new(value: impl Fn() -> T + 'static) -> Self {
+        let val = with_root_owner(|| Signal::derive(value));
+        Self {
+            inner: val,
+            rc: Rc::new(AutoDispose::new(val)),
+        }
     }
 }
 
@@ -59,8 +91,12 @@ impl std::fmt::Debug for AutoDispose {
 }
 
 impl AutoDispose {
-    pub fn new(handle: Box<dyn Fn()>) -> Self {
-        Self(handle)
+    // pub fn new(handle: Box<dyn Fn()>) -> Self {
+    //     Self(handle)
+    // }
+
+    pub fn new<T: SignalDispose + Clone + 'static>(value: T) -> Self {
+        Self(Box::new(move || value.clone().dispose()))
     }
 }
 
