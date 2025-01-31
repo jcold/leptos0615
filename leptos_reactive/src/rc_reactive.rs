@@ -1,8 +1,8 @@
 use std::{ops::Deref, rc::Rc};
 
 use crate::{
-    runtime::with_root_owner, Memo, RwSignal, Signal, SignalDispose,
-    StoredValue,
+    create_signal, runtime::with_root_owner, Memo, ReadSignal, RwSignal,
+    Signal, SignalDispose, StoredValue, WriteSignal,
 };
 
 /// 生成 Rc 包装的信号类型
@@ -82,6 +82,27 @@ impl<T: PartialEq + 'static> RcSignal<T> {
     }
 }
 
+rc_wrapper!(RcReadSignal, ReadSignal);
+rc_wrapper!(RcWriteSignal, WriteSignal);
+
+/// 创建一个 Rc 包装的 ReadSignal 和 WriteSignal
+pub fn create_rc_signal<T: 'static>(
+    value: T,
+) -> (RcReadSignal<T>, RcWriteSignal<T>) {
+    let (read, write) = with_root_owner(|| create_signal(value));
+    let dispose = Rc::new(AutoDispose::new(read));
+    (
+        RcReadSignal {
+            inner: read,
+            rc: Rc::clone(&dispose),
+        },
+        RcWriteSignal {
+            inner: write,
+            rc: Rc::clone(&dispose),
+        },
+    )
+}
+
 struct AutoDispose(Box<dyn Fn()>);
 
 impl std::fmt::Debug for AutoDispose {
@@ -91,10 +112,6 @@ impl std::fmt::Debug for AutoDispose {
 }
 
 impl AutoDispose {
-    // pub fn new(handle: Box<dyn Fn()>) -> Self {
-    //     Self(handle)
-    // }
-
     pub fn new<T: SignalDispose + Clone + 'static>(value: T) -> Self {
         Self(Box::new(move || value.clone().dispose()))
     }
