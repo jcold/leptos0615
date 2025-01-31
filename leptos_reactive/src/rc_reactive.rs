@@ -35,6 +35,11 @@ impl<T> RcRwSignal<T> {
             rc: Rc::new(auto_dispose),
         }
     }
+
+    /// Get the number of strong references to the `RcRwSignal`.
+    pub fn strong_count(&self) -> usize {
+        Rc::strong_count(&self.rc)
+    }
 }
 
 impl<T> Deref for RcRwSignal<T> {
